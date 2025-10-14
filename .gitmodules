@@ -1,0 +1,3 @@
+[submodule "app/src/main/cpp/wristband_obje"]
+	path = app/src/main/cpp/wristband_obje
+	url = https://github.com/vibz-it/wristband_objects
