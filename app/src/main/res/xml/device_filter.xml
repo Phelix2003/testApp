@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- For more information on how to configure this file, see https://developer.android.com/guide/topics/connectivity/usb/host#specify-device -->
+    <usb-device class="2" subclass="2" />
+</resources>
