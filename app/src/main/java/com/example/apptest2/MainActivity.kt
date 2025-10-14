@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.apptest2.ui.theme.Apptest2Theme
 import com.example.apptest2.usb.UsbCdcManager
+import com.example.apptest2.wristband.WristbandFrameManager
+import com.example.apptest2.wristband.WristbandStyle
+import com.example.apptest2.wristband.WristbandColor
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -58,10 +61,27 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf("Prêt à envoyer") }
     var isLoading by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf(listOf<String>()) }
+    var wristbandInitialized by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val usbCdcManager = remember { UsbCdcManager(context) }
+    val wristbandFrameManager = remember { WristbandFrameManager() }
     val listState = rememberLazyListState()
+
+    // Initialiser le gestionnaire wristband au démarrage
+    LaunchedEffect(Unit) {
+        try {
+            wristbandInitialized = wristbandFrameManager.initialize()
+            status = if (wristbandInitialized) {
+                "✅ Gestionnaire wristband initialisé avec succès"
+            } else {
+                "⚠️ Erreur d'initialisation du gestionnaire wristband"
+            }
+        } catch (e: Exception) {
+            status = "❌ Erreur fatale: ${e.message}"
+            wristbandInitialized = false
+        }
+    }
 
     // Auto-scroll vers le bas quand de nouveaux logs arrivent
     LaunchedEffect(logs.size) {
@@ -115,6 +135,61 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         usbCdcManager.clearLogs()
         logs = emptyList()
         status = "Logs effacés"
+    }
+
+    val handleSendWristbandFrame = { frameType: String, data: String, frameNumber: Int ->
+        if (!isLoading) {
+            coroutineScope.launch {
+                isLoading = true
+                status = "Génération et envoi de la trame Event $frameNumber..."
+
+                try {
+                    // Générer une trame Event avec la librairie wristband_objects
+                    val color = when (frameNumber) {
+                        1 -> WristbandColor(red = 255, green = 0, blue = 0)      // Rouge
+                        2 -> WristbandColor(red = 0, green = 255, blue = 0)      // Vert
+                        3 -> WristbandColor(red = 0, green = 0, blue = 255)      // Bleu
+                        4 -> WristbandColor(red = 255, green = 255, blue = 255)  // Blanc
+                        else -> WristbandColor(red = 255, green = 0, blue = 0)
+                    }
+
+                    val style = when (frameType) {
+                        "COMMAND" -> WristbandStyle.ON
+                        "DATA" -> WristbandStyle.STROBE
+                        "STATUS" -> WristbandStyle.PULSE
+                        "ACK" -> WristbandStyle.HEARTBEAT
+                        else -> WristbandStyle.ON
+                    }
+
+                    // Générer la trame avec Event.encode()
+                    val generatedFrame = wristbandFrameManager.generateSimpleEvent(style, color)
+
+                    // Convertir en hex pour le debug
+                    val hexString = wristbandFrameManager.frameToHexString(generatedFrame)
+
+                    // Valider la trame avant l'envoi
+                    val isValid = wristbandFrameManager.validateFrame(generatedFrame)
+                    if (!isValid) {
+                        status = "❌ Trame $frameNumber invalide"
+                        isLoading = false
+                        return@launch
+                    }
+
+                    // Envoyer la trame via USB CDC
+                    val success = usbCdcManager.sendBytes(generatedFrame)
+                    logs = usbCdcManager.logMessages
+
+                    status = if (success) {
+                        "✅ Trame Event $frameNumber envoyée (${generatedFrame.size} octets)\n$hexString"
+                    } else {
+                        "❌ Erreur lors de l'envoi de la trame Event $frameNumber"
+                    }
+                } catch (e: Exception) {
+                    status = "❌ Erreur: ${e.message}"
+                }
+                isLoading = false
+            }
+        }
     }
 
     Column(
@@ -219,6 +294,53 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f)
             ) {
                 Text("Trame 4")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Nouveaux boutons pour les trames Event
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { handleSendWristbandFrame("COMMAND", "data", 1) },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Event CMD")
+            }
+
+            Button(
+                onClick = { handleSendWristbandFrame("DATA", "data", 2) },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Event DATA")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { handleSendWristbandFrame("STATUS", "data", 3) },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Event STATUS")
+            }
+
+            Button(
+                onClick = { handleSendWristbandFrame("ACK", "data", 4) },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Event ACK")
             }
         }
 

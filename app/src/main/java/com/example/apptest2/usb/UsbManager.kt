@@ -40,10 +40,27 @@ class UsbCdcManager(private val context: Context) {
     }
 
     suspend fun sendString(string: String): Boolean {
+        return sendData(string.toByteArray(), "String: $string")
+    }
+
+    /**
+     * Envoie un ByteArray via USB CDC
+     * Utilise la même logique que sendString()
+     */
+    suspend fun sendBytes(data: ByteArray): Boolean {
+        val preview = data.take(16).joinToString(" ") { "0x%02x".format(it) }
+        val description = "ByteArray (${data.size} octets): $preview${if (data.size > 16) "..." else ""}"
+        return sendData(data, description)
+    }
+
+    /**
+     * Méthode privée partagée pour l'envoi de données via USB CDC
+     */
+    private suspend fun sendData(data: ByteArray, description: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 addLog("=== DÉBUT ENVOI USB ===")
-                addLog("Tentative d'envoi: $string")
+                addLog("Tentative d'envoi: $description")
 
                 // Lister tous les périphériques connectés
                 val allDevices = usbManager.deviceList
@@ -112,19 +129,39 @@ class UsbCdcManager(private val context: Context) {
 
                 addLog("✅ Interface revendiquée avec succès")
 
-                // Lister tous les endpoints de l'interface
-                addLog("Endpoints disponibles:")
-                for (i in 0 until cdcInterface.endpointCount) {
-                    val ep = cdcInterface.getEndpoint(i)
-                    val direction = if (ep.direction == UsbConstants.USB_DIR_OUT) "OUT" else "IN"
-                    val type = when (ep.type) {
-                        UsbConstants.USB_ENDPOINT_XFER_BULK -> "BULK"
-                        UsbConstants.USB_ENDPOINT_XFER_INT -> "INTERRUPT"
-                        UsbConstants.USB_ENDPOINT_XFER_CONTROL -> "CONTROL"
-                        UsbConstants.USB_ENDPOINT_XFER_ISOC -> "ISOCHRONOUS"
-                        else -> "UNKNOWN"
+                // Analyse détaillée uniquement pour les strings (pour éviter trop de logs)
+                if (description.startsWith("String:")) {
+                    addLog("=== ANALYSE DÉTAILLÉE DU PÉRIPHÉRIQUE ===")
+                    addLog("Vendor ID: 0x${device.vendorId.toString(16).uppercase()}")
+                    addLog("Product ID: 0x${device.productId.toString(16).uppercase()}")
+                    addLog("Device Class: ${device.deviceClass}")
+                    addLog("Device Subclass: ${device.deviceSubclass}")
+                    addLog("Device Protocol: ${device.deviceProtocol}")
+                    addLog("Nombre total d'interfaces: ${device.interfaceCount}")
+
+                    // Analyser TOUTES les interfaces et endpoints
+                    for (i in 0 until device.interfaceCount) {
+                        val intf = device.getInterface(i)
+                        addLog("Interface $i:")
+                        addLog("  Class: ${intf.interfaceClass} (${getUsbClassDescription(intf.interfaceClass)})")
+                        addLog("  Subclass: ${intf.interfaceSubclass}")
+                        addLog("  Protocol: ${intf.interfaceProtocol}")
+                        addLog("  Endpoints: ${intf.endpointCount}")
+
+                        for (j in 0 until intf.endpointCount) {
+                            val ep = intf.getEndpoint(j)
+                            val direction = if (ep.direction == UsbConstants.USB_DIR_OUT) "OUT" else "IN"
+                            val type = when (ep.type) {
+                                UsbConstants.USB_ENDPOINT_XFER_BULK -> "BULK"
+                                UsbConstants.USB_ENDPOINT_XFER_INT -> "INTERRUPT"
+                                UsbConstants.USB_ENDPOINT_XFER_CONTROL -> "CONTROL"
+                                UsbConstants.USB_ENDPOINT_XFER_ISOC -> "ISOCHRONOUS"
+                                else -> "UNKNOWN(${ep.type})"
+                            }
+                            addLog("    Endpoint $j: $direction $type (addr=0x${ep.address.toString(16)}, maxPacket=${ep.maxPacketSize})")
+                        }
                     }
-                    addLog("  Endpoint $i: $direction, $type, address=0x${ep.address.toString(16)}")
+                    addLog("=== FIN ANALYSE ===")
                 }
 
                 // Recherche du endpoint de sortie - Version améliorée
@@ -201,16 +238,15 @@ class UsbCdcManager(private val context: Context) {
                 }
                 addLog("✅ Endpoint de sortie trouvé: $endpointType, address=0x${outEndpoint.address.toString(16)}")
 
-                val bytes = string.toByteArray()
-                addLog("Envoi de ${bytes.size} bytes: ${bytes.joinToString(" ") { "0x%02x".format(it) }}")
+                addLog("Envoi de ${data.size} bytes: ${data.joinToString(" ") { "0x%02x".format(it) }}")
 
                 // Utiliser la méthode appropriée selon le type d'endpoint
                 val result = if (outEndpoint.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
-                    connection.bulkTransfer(outEndpoint, bytes, bytes.size, 5000)
+                    connection.bulkTransfer(outEndpoint, data, data.size, 5000)
                 } else {
                     // Pour les endpoints INTERRUPT, utiliser controlTransfer ou bulkTransfer selon le périphérique
                     addLog("Utilisation d'INTERRUPT endpoint...")
-                    connection.bulkTransfer(outEndpoint, bytes, bytes.size, 5000)
+                    connection.bulkTransfer(outEndpoint, data, data.size, 5000)
                 }
 
                 val success = result >= 0
@@ -396,4 +432,28 @@ class UsbCdcManager(private val context: Context) {
     fun listConnectedDevices(): List<UsbDevice> {
         return usbManager.deviceList.values.toList()
     }
+
+    private fun getUsbClassDescription(usbClass: Int): String {
+        return when (usbClass) {
+            UsbConstants.USB_CLASS_APP_SPEC -> "APPLICATION_SPECIFIC"
+            UsbConstants.USB_CLASS_AUDIO -> "AUDIO"
+            UsbConstants.USB_CLASS_CDC_DATA -> "CDC_DATA"
+            UsbConstants.USB_CLASS_COMM -> "COMMUNICATION"
+            UsbConstants.USB_CLASS_CONTENT_SEC -> "CONTENT_SECURITY"
+            UsbConstants.USB_CLASS_CSCID -> "SMART_CARD"
+            UsbConstants.USB_CLASS_HID -> "HID"
+            UsbConstants.USB_CLASS_HUB -> "HUB"
+            UsbConstants.USB_CLASS_MASS_STORAGE -> "MASS_STORAGE"
+            UsbConstants.USB_CLASS_MISC -> "MISCELLANEOUS"
+            UsbConstants.USB_CLASS_PER_INTERFACE -> "PER_INTERFACE"
+            UsbConstants.USB_CLASS_PRINTER -> "PRINTER"
+            UsbConstants.USB_CLASS_STILL_IMAGE -> "STILL_IMAGE"
+            UsbConstants.USB_CLASS_VIDEO -> "VIDEO"
+            UsbConstants.USB_CLASS_WIRELESS_CONTROLLER -> "WIRELESS_CONTROLLER"
+            5 -> "PHYSICAL" // Fallback pour USB_CLASS_PHYSICAL si non disponible
+            255 -> "VENDOR_SPECIFIC"
+            else -> "UNKNOWN($usbClass)"
+        }
+    }
+
 }

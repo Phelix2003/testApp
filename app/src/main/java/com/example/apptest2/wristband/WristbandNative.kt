@@ -1,9 +1,20 @@
 package com.example.apptest2.wristband
 
-/**
- * Interface native pour la librairie wristband_objects
- * Cette classe permet de générer et manipuler les trames du protocole wristband
- */
+// Classes de données pour les couleurs et styles
+data class WristbandColor(
+    val red: Int,
+    val green: Int,
+    val blue: Int
+)
+
+enum class WristbandStyle {
+    ON,
+    STROBE,
+    PULSE,
+    HEARTBEAT
+}
+
+// Interface JNI pour la librairie C++ wristband_objects
 class WristbandNative {
 
     companion object {
@@ -13,123 +24,73 @@ class WristbandNative {
         }
     }
 
-    /**
-     * Initialise la librairie wristband_objects
-     * @return true si l'initialisation s'est bien passée
-     */
-    external fun initialize(): Boolean
-
-    /**
-     * Génère une trame selon le protocole wristband
-     * @param frameType Type de trame à générer
-     * @param data Données à inclure dans la trame
-     * @return La trame générée prête à être envoyée
-     */
-    external fun generateFrame(frameType: Int, data: String): String
-
-    /**
-     * Valide une trame selon le protocole wristband
-     * @param frame Trame à valider
-     * @return true si la trame est valide
-     */
-    external fun validateFrame(frame: String): Boolean
-
-    /**
-     * Parse une trame reçue selon le protocole wristband
-     * @param frame Trame à parser
-     * @return Les données parsées ou une chaîne vide en cas d'erreur
-     */
-    external fun parseFrame(frame: String): String
+    // Fonctions natives qui appellent la librairie C++ wristband_objects
+    external fun createHelloMessage(sourceVersion: String, sourceName: String, destinationMask: Int): ByteArray
+    external fun createEventMessage(style: Int, red: Int, green: Int, blue: Int): ByteArray
+    external fun createCommandMessage(command: Int, param1: Int, param2: Int): ByteArray
+    external fun validateFrame(frame: ByteArray): Boolean
+    external fun getFrameInfo(frame: ByteArray): String
 }
 
-/**
- * Gestionnaire de haut niveau pour les trames wristband
- * Encapsule l'interface native et fournit des méthodes pratiques
- */
+// Gestionnaire des trames wristband
 class WristbandFrameManager {
-    private val nativeInterface = WristbandNative()
-    private var isInitialized = false
+    private val wristbandNative = WristbandNative()
 
-    /**
-     * Types de trames disponibles
-     */
-    object FrameTypes {
-        const val COMMAND = 1
-        const val DATA = 2
-        const val STATUS = 3
-        const val ACK = 4
-        const val ERROR = 5
-    }
-
-    /**
-     * Initialise le gestionnaire de trames
-     */
     fun initialize(): Boolean {
-        if (!isInitialized) {
-            isInitialized = nativeInterface.initialize()
+        return try {
+            // Test simple pour vérifier que la librairie native fonctionne
+            val testFrame = wristbandNative.createHelloMessage("1.0", "Android", 0)
+            testFrame != null && testFrame.isNotEmpty()
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur d'initialisation: ${e.message}", e)
+            false
         }
-        return isInitialized
     }
 
-    /**
-     * Génère une trame de commande
-     */
-    fun generateCommandFrame(command: String): String {
-        ensureInitialized()
-        return nativeInterface.generateFrame(FrameTypes.COMMAND, command)
-    }
+    fun generateSimpleEvent(style: WristbandStyle, color: WristbandColor): ByteArray {
+        try {
+            val styleInt = when (style) {
+                WristbandStyle.ON -> 0        // Style::On = 0
+                WristbandStyle.STROBE -> 2    // Style::Strobe = 2
+                WristbandStyle.PULSE -> 7     // Style::Pulse = 7
+                WristbandStyle.HEARTBEAT -> 5 // Style::Heartbeat = 5
+            }
 
-    /**
-     * Génère une trame de données
-     */
-    fun generateDataFrame(data: String): String {
-        ensureInitialized()
-        return nativeInterface.generateFrame(FrameTypes.DATA, data)
-    }
+            android.util.Log.d("WristbandFrameManager", "Génération Event: style=$styleInt, color=(${color.red},${color.green},${color.blue})")
 
-    /**
-     * Génère une trame de statut
-     */
-    fun generateStatusFrame(status: String): String {
-        ensureInitialized()
-        return nativeInterface.generateFrame(FrameTypes.STATUS, status)
-    }
+            val result = wristbandNative.createEventMessage(styleInt, color.red, color.green, color.blue)
 
-    /**
-     * Génère une trame d'acquittement
-     */
-    fun generateAckFrame(ackData: String = ""): String {
-        ensureInitialized()
-        return nativeInterface.generateFrame(FrameTypes.ACK, ackData)
-    }
+            if (result == null) {
+                android.util.Log.e("WristbandFrameManager", "createEventMessage a retourné null")
+                throw RuntimeException("Impossible de générer la trame Event")
+            }
 
-    /**
-     * Génère une trame d'erreur
-     */
-    fun generateErrorFrame(errorMsg: String): String {
-        ensureInitialized()
-        return nativeInterface.generateFrame(FrameTypes.ERROR, errorMsg)
-    }
+            android.util.Log.d("WristbandFrameManager", "Event généré avec succès: ${result.size} octets")
+            return result
 
-    /**
-     * Valide une trame reçue
-     */
-    fun validateFrame(frame: String): Boolean {
-        ensureInitialized()
-        return nativeInterface.validateFrame(frame)
-    }
-
-    /**
-     * Parse une trame reçue et retourne les données
-     */
-    fun parseFrame(frame: String): String {
-        ensureInitialized()
-        return nativeInterface.parseFrame(frame)
-    }
-
-    private fun ensureInitialized() {
-        if (!isInitialized) {
-            throw IllegalStateException("WristbandFrameManager n'est pas initialisé. Appelez initialize() d'abord.")
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération Event: ${e.message}", e)
+            throw e
         }
+    }
+
+    fun generateHelloMessage(sourceVersion: String, sourceName: String, destinationMask: Int): ByteArray {
+        return wristbandNative.createHelloMessage(sourceVersion, sourceName, destinationMask)
+    }
+
+    fun generateCommandMessage(command: Int, param1: Int, param2: Int): ByteArray {
+        return wristbandNative.createCommandMessage(command, param1, param2)
+    }
+
+    fun validateFrame(frame: ByteArray): Boolean {
+        return wristbandNative.validateFrame(frame)
+    }
+
+    fun frameToHexString(frame: ByteArray): String {
+        return frame.joinToString(" ") { "0x%02x".format(it) }
+    }
+
+    fun getFrameInfo(frame: ByteArray): String {
+        return wristbandNative.getFrameInfo(frame)
     }
 }

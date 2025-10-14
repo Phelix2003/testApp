@@ -18,6 +18,19 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Configuration NDK
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
+
+        // Configuration des outils de build externe (CMake)
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17")
+                arguments += listOf("-DANDROID_STL=c++_shared")
+            }
+        }
     }
 
     buildTypes {
@@ -38,6 +51,14 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    // Configuration CMake
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 
