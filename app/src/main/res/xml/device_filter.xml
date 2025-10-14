@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- For more information on how to configure this file, see https://developer.android.com/guide/topics/connectivity/usb/host#specify-device -->
-    <usb-device class="2" subclass="2" />
+    <usb-device class="2" subclass="2" protocol="1" />
+    <!-- CDC ACM devices -->
+    <usb-device class="10" />
+    <!-- CDC Data devices -->
 </resources>
+
