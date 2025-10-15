@@ -289,4 +289,123 @@ Java_com_example_apptest2_wristband_WristbandNative_getFrameInfo(
     return env->NewStringUTF(info.c_str());
 }
 
+// Nouvelle fonction pour createDetailedEventMessage avec TOUS les paramètres
+JNIEXPORT jbyteArray JNICALL
+Java_com_example_apptest2_wristband_WristbandNative_createDetailedEventMessage(
+        JNIEnv *env,
+        jobject /* this */,
+        jlong rStartEventMs,
+        jlong rStopEventMs,
+        jint mask,
+        jint styleValue,
+        jint frequency,
+        jint duration,
+        jint intensity,
+        jint colorRed,
+        jint colorGreen,
+        jint colorBlue,
+        jint colorWhite,
+        jint colorVibration,
+        jint mapId,
+        jint focus,
+        jint zoom,
+        jint goboTypeValue,
+        jint layerNbr,
+        jint layerOpacity,
+        jint blendingModeValue) {
+
+    try {
+        LOGI("=== CRÉATION EVENT DÉTAILLÉ ===");
+        LOGI("Timing: %lld-%lld ms, mask=%d", rStartEventMs, rStopEventMs, mask);
+        LOGI("Style: %d, freq=%d Hz, dur=%d ms, int=%d", styleValue, frequency, duration, intensity);
+        LOGI("Couleur RGBWV: (%d,%d,%d,%d,%d)", colorRed, colorGreen, colorBlue, colorWhite, colorVibration);
+        LOGI("Localisation: map=%d, focus=%d, zoom=%d, gobo=%d", mapId, focus, zoom, goboTypeValue);
+        LOGI("Layer: nbr=%d, opacity=%d, blend=%d", layerNbr, layerOpacity, blendingModeValue);
+
+        // Créer un événement détaillé avec TOUS les paramètres
+        Event event;
+
+        // 1. Configuration de l'effet avec TOUS les paramètres couleur
+        Style eventStyle = static_cast<Style>(styleValue);
+        uint8_t color[NB_COLORS_V0_0] = {
+            static_cast<uint8_t>(colorRed),      // Rouge
+            static_cast<uint8_t>(colorGreen),    // Vert
+            static_cast<uint8_t>(colorBlue),     // Bleu
+            static_cast<uint8_t>(colorWhite),    // Blanc
+            static_cast<uint8_t>(colorVibration) // Vibration
+        };
+
+        LOGI("Création Effect détaillé");
+        Effect effect(eventStyle,
+                     static_cast<uint8_t>(frequency),
+                     static_cast<uint8_t>(duration),
+                     static_cast<uint8_t>(intensity),
+                     color);
+        event.effect = effect;
+
+        // 2. Configuration du masque et target
+        event.mask = static_cast<uint8_t>(mask);
+        event.target_uid = 0; // Par défaut
+
+        // 3. Configuration des temps détaillés
+        LOGI("Configuration temps détaillés");
+        Relative_time_ms startTime(static_cast<uint32_t>(rStartEventMs));
+        Relative_time_ms stopTime(static_cast<uint32_t>(rStopEventMs));
+        event.r_start_event_ms = startTime;
+        event.r_stop_event_ms = stopTime;
+
+        // 4. Configuration de la localisation détaillée
+        LOGI("Configuration localisation détaillée");
+        Localization localization;
+        localization.map_id = static_cast<uint8_t>(mapId);
+        localization.focus = static_cast<uint8_t>(focus);    // Facteur de fade (0-255)
+        localization.zoom = static_cast<uint8_t>(zoom);      // Profondeur d'effet (0-255)
+        localization.gobo_type = static_cast<GOBO_Type>(goboTypeValue);
+        event.localization = localization;
+
+        // 5. Configuration du layer détaillé
+        LOGI("Configuration layer détaillé");
+        Blending_mode blendMode = static_cast<Blending_mode>(blendingModeValue);
+        Layer layer(static_cast<uint8_t>(layerNbr),
+                   static_cast<uint8_t>(layerOpacity),
+                   blendMode);
+        event.layer = layer;
+
+        // 6. Encoder la trame
+        LOGI("Encodage de l'événement détaillé");
+        std::vector<uint8_t> payload = event.encode();
+
+        LOGI("Event détaillé payload créé, taille: %zu octets", payload.size());
+
+        // Log détaillé des premiers octets pour debug
+        if (payload.size() > 0) {
+            std::string hexStr;
+            for (size_t i = 0; i < std::min(payload.size(), size_t(32)); i++) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "0x%02x ", payload[i]);
+                hexStr += buf;
+            }
+            LOGI("Payload détaillé: %s%s", hexStr.c_str(), payload.size() > 32 ? "..." : "");
+        }
+
+        // 7. Encapsuler le message avec le protocole
+        std::vector<uint8_t> frame = encapsulateMessage(payload);
+
+        LOGI("Event détaillé encapsulé, taille totale: %zu octets", frame.size());
+        LOGI("=== FIN CRÉATION EVENT DÉTAILLÉ ===");
+
+        // 8. Convertir en jbyteArray
+        jbyteArray result = env->NewByteArray(frame.size());
+        env->SetByteArrayRegion(result, 0, frame.size(), reinterpret_cast<const jbyte*>(frame.data()));
+
+        return result;
+    } catch (const std::exception& e) {
+        LOGE("Exception dans createDetailedEventMessage: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        LOGE("Exception inconnue dans createDetailedEventMessage");
+        return nullptr;
+    }
+}
+
 } // extern "C"

@@ -12,12 +12,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -36,10 +42,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.apptest2.ui.theme.Apptest2Theme
+import com.example.apptest2.ui.DefaultMessageConfigs
+import com.example.apptest2.ui.MessageConfig
+import com.example.apptest2.ui.MessageConfigScreen
 import com.example.apptest2.usb.UsbCdcManager
 import com.example.apptest2.wristband.WristbandFrameManager
-import com.example.apptest2.wristband.WristbandStyle
-import com.example.apptest2.wristband.WristbandColor
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -62,6 +69,13 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     var isLoading by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf(listOf<String>()) }
     var wristbandInitialized by remember { mutableStateOf(false) }
+    var isDiagnosticActive by remember { mutableStateOf(false) }
+    var showConfigScreen by remember { mutableStateOf(false) }
+    var selectedButtonForConfig by remember { mutableStateOf(1) }
+
+    // État pour stocker les configurations des messages
+    var messageConfigs by remember { mutableStateOf(DefaultMessageConfigs.configs.toMutableMap()) }
+
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val usbCdcManager = remember { UsbCdcManager(context) }
@@ -90,21 +104,52 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val handleSend = { trame: String, trameNumber: Int ->
+    // Fonction simplifiée pour envoyer uniquement des événements détaillés
+    val handleSendMessage = { buttonNumber: Int ->
         if (!isLoading) {
             coroutineScope.launch {
                 isLoading = true
-                status = "Envoi de la Trame $trameNumber..."
+                val config = messageConfigs[buttonNumber] ?: return@launch
+                status = "Envoi de ${config.name}..."
 
-                val success = usbCdcManager.sendString(trame)
-                logs = usbCdcManager.logMessages
+                try {
+                    // Vérifier d'abord si des périphériques USB sont disponibles
+                    val devices = usbCdcManager.listConnectedDevices()
+                    if (devices.isEmpty()) {
+                        status = "⚠️ Aucun périphérique USB détecté - Connectez un périphérique CDC"
+                        isLoading = false
+                        return@launch
+                    }
 
-                status = if (success) {
-                    "Trame $trameNumber envoyée avec succès"
-                } else {
-                    "Erreur lors de l'envoi de la Trame $trameNumber"
+                    // Toujours utiliser la configuration détaillée
+                    val frame = wristbandFrameManager.generateDetailedEvent(config.detailedEventConfig)
+                    val isValid = wristbandFrameManager.validateFrame(frame)
+
+                    if (!isValid) {
+                        status = "❌ Trame ${config.name} invalide"
+                        isLoading = false
+                        return@launch
+                    }
+
+                    status = "📡 Envoi de ${config.name} via USB..."
+                    val success = usbCdcManager.sendBytes(frame)
+
+                    // Mettre à jour les logs seulement si le diagnostic est actif
+                    if (isDiagnosticActive) {
+                        logs = usbCdcManager.logMessages
+                    }
+
+                    status = if (success) {
+                        "✅ ${config.name} envoyé avec succès"
+                    } else {
+                        "❌ Erreur lors de l'envoi de ${config.name} - Vérifiez la connexion USB"
+                    }
+                } catch (e: Exception) {
+                    status = "❌ Erreur: ${e.message}"
+                    android.util.Log.e("MainActivity", "Erreur lors de l'envoi de ${config.name}", e)
+                } finally {
+                    isLoading = false
                 }
-                isLoading = false
             }
         }
     }
@@ -113,19 +158,22 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         if (!isLoading) {
             coroutineScope.launch {
                 isLoading = true
-                status = "Diagnostic USB en cours..."
 
-                val devices = usbCdcManager.listConnectedDevices()
-                status = if (devices.isEmpty()) {
-                    "Aucun périphérique USB détecté"
+                if (!isDiagnosticActive) {
+                    status = "Activation du diagnostic USB..."
+                    val devices = usbCdcManager.listConnectedDevices()
+                    if (devices.isEmpty()) {
+                        status = "⚠️ Diagnostic activé - Aucun périphérique USB détecté"
+                    } else {
+                        status = "✅ Diagnostic activé - ${devices.size} périphérique(s) USB détecté(s)"
+                    }
+                    usbCdcManager.sendString("TEST_DIAGNOSTIC")
+                    logs = usbCdcManager.logMessages
+                    isDiagnosticActive = true
                 } else {
-                    "Trouvé ${devices.size} périphérique(s) USB"
+                    status = "🔴 Diagnostic désactivé - Affichage des logs arrêté"
+                    isDiagnosticActive = false
                 }
-
-                // Forcer un appel pour voir les logs détaillés
-                usbCdcManager.sendString("TEST_DIAGNOSTIC")
-                logs = usbCdcManager.logMessages
-
                 isLoading = false
             }
         }
@@ -137,246 +185,210 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         status = "Logs effacés"
     }
 
-    val handleSendWristbandFrame = { frameType: String, data: String, frameNumber: Int ->
-        if (!isLoading) {
-            coroutineScope.launch {
-                isLoading = true
-                status = "Génération et envoi de la trame Event $frameNumber..."
-
-                try {
-                    // Générer une trame Event avec la librairie wristband_objects
-                    val color = when (frameNumber) {
-                        1 -> WristbandColor(red = 255, green = 0, blue = 0)      // Rouge
-                        2 -> WristbandColor(red = 0, green = 255, blue = 0)      // Vert
-                        3 -> WristbandColor(red = 0, green = 0, blue = 255)      // Bleu
-                        4 -> WristbandColor(red = 255, green = 255, blue = 255)  // Blanc
-                        else -> WristbandColor(red = 255, green = 0, blue = 0)
-                    }
-
-                    val style = when (frameType) {
-                        "COMMAND" -> WristbandStyle.ON
-                        "DATA" -> WristbandStyle.STROBE
-                        "STATUS" -> WristbandStyle.PULSE
-                        "ACK" -> WristbandStyle.HEARTBEAT
-                        else -> WristbandStyle.ON
-                    }
-
-                    // Générer la trame avec Event.encode()
-                    val generatedFrame = wristbandFrameManager.generateSimpleEvent(style, color)
-
-                    // Convertir en hex pour le debug
-                    val hexString = wristbandFrameManager.frameToHexString(generatedFrame)
-
-                    // Valider la trame avant l'envoi
-                    val isValid = wristbandFrameManager.validateFrame(generatedFrame)
-                    if (!isValid) {
-                        status = "❌ Trame $frameNumber invalide"
-                        isLoading = false
-                        return@launch
-                    }
-
-                    // Envoyer la trame via USB CDC
-                    val success = usbCdcManager.sendBytes(generatedFrame)
-                    logs = usbCdcManager.logMessages
-
-                    status = if (success) {
-                        "✅ Trame Event $frameNumber envoyée (${generatedFrame.size} octets)\n$hexString"
-                    } else {
-                        "❌ Erreur lors de l'envoi de la trame Event $frameNumber"
-                    }
-                } catch (e: Exception) {
-                    status = "❌ Erreur: ${e.message}"
+    // Affichage conditionnel : écran principal ou écran de configuration
+    if (showConfigScreen) {
+        MessageConfigScreen(
+            buttonNumber = selectedButtonForConfig,
+            currentConfig = messageConfigs[selectedButtonForConfig] ?: MessageConfig(),
+            onConfigChange = { newConfig ->
+                messageConfigs = messageConfigs.toMutableMap().apply {
+                    put(selectedButtonForConfig, newConfig)
                 }
-                isLoading = false
-            }
-        }
-    }
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp)
-    ) {
-        // Zone de statut
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (status.contains("Erreur")) {
-                    MaterialTheme.colorScheme.errorContainer
-                } else if (status.contains("succès")) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
-            )
-        ) {
-            Text(
-                text = status,
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (status.contains("Erreur")) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Boutons de contrôle
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { handleDiagnostic() },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Text("🔍 DIAGNOSTIC")
-            }
-
-            Button(
-                onClick = { clearLogs() },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.tertiary
-                )
-            ) {
-                Text("🗑️ EFFACER")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Boutons de trames
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { handleSend("TRAME1\r\n", 1) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Trame 1")
-            }
-
-            Button(
-                onClick = { handleSend("TRAME2\r\n", 2) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Trame 2")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { handleSend("TRAME3\r\n", 3) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Trame 3")
-            }
-
-            Button(
-                onClick = { handleSend("TRAME4\r\n", 4) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Trame 4")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Nouveaux boutons pour les trames Event
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { handleSendWristbandFrame("COMMAND", "data", 1) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Event CMD")
-            }
-
-            Button(
-                onClick = { handleSendWristbandFrame("DATA", "data", 2) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Event DATA")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { handleSendWristbandFrame("STATUS", "data", 3) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Event STATUS")
-            }
-
-            Button(
-                onClick = { handleSendWristbandFrame("ACK", "data", 4) },
-                enabled = !isLoading,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Event ACK")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Zone des logs
-        Text(
-            text = "Logs USB (${logs.size} entrées):",
-            style = MaterialTheme.typography.titleMedium
+            },
+            onBack = { showConfigScreen = false }
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            modifier = Modifier.fillMaxSize(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
+    } else {
+        Column(
+            modifier = modifier.fillMaxSize().padding(16.dp)
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.padding(8.dp)
+            // Zone de statut
+            Card(
+                modifier = Modifier.fillMaxWidth().height(100.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (status.contains("Erreur")) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else if (status.contains("succès")) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
             ) {
-                items(logs) { logEntry ->
-                    Text(
-                        text = logEntry,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = when {
-                            logEntry.contains("❌") -> MaterialTheme.colorScheme.error
-                            logEntry.contains("✅") -> MaterialTheme.colorScheme.primary
-                            logEntry.contains("⚠️") -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        },
-                        modifier = Modifier.padding(vertical = 1.dp)
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(16.dp).fillMaxSize(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (status.contains("Erreur")) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 4,
+                    minLines = 4
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Boutons de contrôle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { handleDiagnostic() },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = if (isDiagnosticActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.secondary
+                        }
                     )
+                ) {
+                    Text(
+                        if (isDiagnosticActive) {
+                            "🟢 DIAGNOSTIC ON"
+                        } else {
+                            "🔍 DIAGNOSTIC OFF"
+                        }
+                    )
+                }
+
+                Button(
+                    onClick = { clearLogs() },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Text("🗑️ EFFACER")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Boutons de messages configurables (8 boutons, 2 par ligne)
+            for (row in 0..3) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (col in 0..1) {
+                        val buttonNumber = row * 2 + col + 1
+                        val config = messageConfigs[buttonNumber] ?: MessageConfig()
+
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = { handleSendMessage(buttonNumber) },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = config.name,
+                                    maxLines = 1
+                                )
+                            }
+
+                            FloatingActionButton(
+                                onClick = {
+                                    selectedButtonForConfig = buttonNumber
+                                    showConfigScreen = true
+                                },
+                                modifier = Modifier.size(40.dp),
+                                shape = CircleShape
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Configurer ${config.name}",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (row < 3) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Zone des logs - Affichage conditionnel basé sur l'état du diagnostic
+            if (isDiagnosticActive) {
+                Text(
+                    text = "Logs USB (${logs.size} entrées):",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxSize(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        items(logs) { logEntry ->
+                            Text(
+                                text = logEntry,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = when {
+                                    logEntry.contains("❌") -> MaterialTheme.colorScheme.error
+                                    logEntry.contains("✅") -> MaterialTheme.colorScheme.primary
+                                    logEntry.contains("⚠️") -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.padding(vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Message informatif quand les logs ne sont pas affichés
+                Card(
+                    modifier = Modifier.fillMaxSize(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "📊",
+                            fontSize = 48.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Affichage des logs désactivé",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Activez le diagnostic pour voir les logs USB",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

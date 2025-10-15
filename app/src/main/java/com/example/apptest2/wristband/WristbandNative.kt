@@ -30,6 +30,33 @@ class WristbandNative {
     external fun createCommandMessage(command: Int, param1: Int, param2: Int): ByteArray
     external fun validateFrame(frame: ByteArray): Boolean
     external fun getFrameInfo(frame: ByteArray): String
+
+    // Fonction native étendue pour créer un Event complet avec tous les paramètres
+    external fun createDetailedEventMessage(
+        // Timing
+        rStartEventMs: Long,
+        rStopEventMs: Long,
+        mask: Int,
+        // Effect
+        styleValue: Int,
+        frequency: Int,
+        duration: Int,
+        intensity: Int,
+        colorRed: Int,
+        colorGreen: Int,
+        colorBlue: Int,
+        colorWhite: Int,
+        colorVibration: Int,
+        // Localization
+        mapId: Int,
+        focus: Int,
+        zoom: Int,
+        goboTypeValue: Int,
+        // Layer
+        layerNbr: Int,
+        layerOpacity: Int,
+        blendingModeValue: Int
+    ): ByteArray
 }
 
 // Gestionnaire des trames wristband
@@ -92,5 +119,122 @@ class WristbandFrameManager {
 
     fun getFrameInfo(frame: ByteArray): String {
         return wristbandNative.getFrameInfo(frame)
+    }
+
+    fun generateDetailedEvent(detailedEventConfig: com.example.apptest2.ui.DetailedEventConfig): ByteArray {
+        try {
+            android.util.Log.d("WristbandFrameManager", "Génération Event détaillé avec TOUS les paramètres")
+            android.util.Log.d("WristbandFrameManager", "Config complète reçue:")
+            android.util.Log.d("WristbandFrameManager", "  Timing: ${detailedEventConfig.rStartEventMs}-${detailedEventConfig.rStopEventMs}ms, mask=${detailedEventConfig.mask}")
+            android.util.Log.d("WristbandFrameManager", "  Style: ${detailedEventConfig.effect.style} (${detailedEventConfig.effect.style.value})")
+            android.util.Log.d("WristbandFrameManager", "  Fréquence: ${detailedEventConfig.effect.frequency}Hz, Durée: ${detailedEventConfig.effect.duration}ms")
+            android.util.Log.d("WristbandFrameManager", "  Intensité: ${detailedEventConfig.effect.intensity}/255")
+            android.util.Log.d("WristbandFrameManager", "  Couleur RGBWV: (${detailedEventConfig.effect.color.red},${detailedEventConfig.effect.color.green},${detailedEventConfig.effect.color.blue},${detailedEventConfig.effect.color.white},${detailedEventConfig.effect.color.vibration})")
+            android.util.Log.d("WristbandFrameManager", "  Localisation: map=${detailedEventConfig.localization.mapId}, focus=${detailedEventConfig.localization.focus}, zoom=${detailedEventConfig.localization.zoom}, gobo=${detailedEventConfig.localization.goboType}")
+            android.util.Log.d("WristbandFrameManager", "  Layer: nbr=${detailedEventConfig.layer.nbr}, opacity=${detailedEventConfig.layer.opacity}, blend=${detailedEventConfig.layer.blendingMode}")
+
+            // Essayer d'abord d'utiliser createDetailedEventMessage avec TOUS les paramètres
+            try {
+                android.util.Log.d("WristbandFrameManager", "🚀 Tentative d'utilisation de createDetailedEventMessage avec tous les paramètres")
+
+                val result = wristbandNative.createDetailedEventMessage(
+                    // Timing
+                    detailedEventConfig.rStartEventMs,
+                    detailedEventConfig.rStopEventMs,
+                    detailedEventConfig.mask,
+                    // Effect
+                    detailedEventConfig.effect.style.value,
+                    detailedEventConfig.effect.frequency,
+                    detailedEventConfig.effect.duration,
+                    detailedEventConfig.effect.intensity,
+                    detailedEventConfig.effect.color.red,
+                    detailedEventConfig.effect.color.green,
+                    detailedEventConfig.effect.color.blue,
+                    detailedEventConfig.effect.color.white,
+                    detailedEventConfig.effect.color.vibration,
+                    // Localization
+                    detailedEventConfig.localization.mapId,
+                    detailedEventConfig.localization.focus,
+                    detailedEventConfig.localization.zoom,
+                    detailedEventConfig.localization.goboType.value,
+                    // Layer
+                    detailedEventConfig.layer.nbr,
+                    detailedEventConfig.layer.opacity,
+                    detailedEventConfig.layer.blendingMode.value
+                )
+
+                if (result == null) {
+                    android.util.Log.e("WristbandFrameManager", "createDetailedEventMessage a retourné null")
+                    throw RuntimeException("Impossible de générer la trame Event détaillée")
+                }
+
+                android.util.Log.d("WristbandFrameManager", "✅ Event détaillé généré avec succès avec TOUS les paramètres: ${result.size} octets")
+                android.util.Log.d("WristbandFrameManager", "✅ TOUS les paramètres ont été transmis:")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Timing: ${detailedEventConfig.rStartEventMs}-${detailedEventConfig.rStopEventMs}ms, mask=${detailedEventConfig.mask}")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Effet: style=${detailedEventConfig.effect.style.value}, freq=${detailedEventConfig.effect.frequency}Hz, dur=${detailedEventConfig.effect.duration}ms, int=${detailedEventConfig.effect.intensity}")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Couleur complète: RGBWV(${detailedEventConfig.effect.color.red},${detailedEventConfig.effect.color.green},${detailedEventConfig.effect.color.blue},${detailedEventConfig.effect.color.white},${detailedEventConfig.effect.color.vibration})")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Localisation: map=${detailedEventConfig.localization.mapId}, focus=${detailedEventConfig.localization.focus}, zoom=${detailedEventConfig.localization.zoom}, gobo=${detailedEventConfig.localization.goboType.value}")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Layer: nbr=${detailedEventConfig.layer.nbr}, opacity=${detailedEventConfig.layer.opacity}, blend=${detailedEventConfig.layer.blendingMode.value}")
+                android.util.Log.d("WristbandFrameManager", "Trame détaillée: ${frameToHexString(result)}")
+
+                return result
+
+            } catch (e: UnsatisfiedLinkError) {
+                // La fonction createDetailedEventMessage n'est pas encore implémentée côté C++
+                android.util.Log.w("WristbandFrameManager", "⚠️ createDetailedEventMessage pas encore implémentée côté C++")
+                android.util.Log.w("WristbandFrameManager", "🔄 Fallback vers createEventMessage avec paramètres de base")
+
+                // Fallback : utiliser la fonction simple avec les paramètres de base
+                val styleInt = detailedEventConfig.effect.style.value
+                val red = detailedEventConfig.effect.color.red
+                val green = detailedEventConfig.effect.color.green
+                val blue = detailedEventConfig.effect.color.blue
+
+                android.util.Log.d("WristbandFrameManager", "Paramètres de base transmis: style=$styleInt, RGB($red,$green,$blue)")
+
+                val result = wristbandNative.createEventMessage(styleInt, red, green, blue)
+
+                if (result == null) {
+                    android.util.Log.e("WristbandFrameManager", "createEventMessage a retourné null")
+                    throw RuntimeException("Impossible de générer la trame Event")
+                }
+
+                android.util.Log.d("WristbandFrameManager", "Event généré avec succès (mode fallback): ${result.size} octets")
+                android.util.Log.d("WristbandFrameManager", "Trame: ${frameToHexString(result)}")
+
+                // Log des paramètres non utilisés en mode fallback
+                android.util.Log.i("WristbandFrameManager", "📋 Paramètres configurés mais non transmis (en attente d'implémentation C++):")
+                if (detailedEventConfig.rStartEventMs != 0L || detailedEventConfig.rStopEventMs != 1000L) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Timing: ${detailedEventConfig.rStartEventMs}-${detailedEventConfig.rStopEventMs}ms")
+                }
+                if (detailedEventConfig.mask != 0) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Masque: ${detailedEventConfig.mask}")
+                }
+                if (detailedEventConfig.effect.frequency != 1) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Fréquence: ${detailedEventConfig.effect.frequency}Hz")
+                }
+                if (detailedEventConfig.effect.duration != 100) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Durée: ${detailedEventConfig.effect.duration}ms")
+                }
+                if (detailedEventConfig.effect.intensity != 255) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Intensité: ${detailedEventConfig.effect.intensity}")
+                }
+                if (detailedEventConfig.effect.color.white != 0 || detailedEventConfig.effect.color.vibration != 0) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Blanc/Vibration: ${detailedEventConfig.effect.color.white}/${detailedEventConfig.effect.color.vibration}")
+                }
+                if (detailedEventConfig.localization.mapId != 0 || detailedEventConfig.localization.focus != 0 || detailedEventConfig.localization.zoom != 10) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Localisation: map=${detailedEventConfig.localization.mapId}, focus=${detailedEventConfig.localization.focus}, zoom=${detailedEventConfig.localization.zoom}")
+                }
+                if (detailedEventConfig.layer.nbr != 0 || detailedEventConfig.layer.opacity != 255) {
+                    android.util.Log.i("WristbandFrameManager", "  📋 Layer: nbr=${detailedEventConfig.layer.nbr}, opacity=${detailedEventConfig.layer.opacity}")
+                }
+
+                return result
+            }
+
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération Event détaillé: ${e.message}", e)
+            throw e
+        }
     }
 }
