@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Service de synchronisation automatique du temps
  * Envoie un message de synchronisation du temps toutes les 3005ms
+ * Envoie également la référence de temps relatif (temps d'ouverture de l'app)
  * Gère automatiquement les connexions/déconnexions USB
  */
 class TimeSyncService(
@@ -25,6 +26,12 @@ class TimeSyncService(
     private val isRunning = AtomicBoolean(false)
     private var syncJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // Temps de référence fixe (moment d'ouverture de l'application)
+    private val applicationStartTime = System.currentTimeMillis()
+
+    // Exposer le temps de référence pour les calculs de temps relatifs
+    fun getApplicationStartTime(): Long = applicationStartTime
 
     // Compteurs pour les statistiques
     private var syncAttempts = 0
@@ -114,13 +121,15 @@ class TimeSyncService(
 
     /**
      * Effectue une tentative de synchronisation du temps
+     * Envoie 2 messages : temps absolu + référence de temps relatif
      */
     private suspend fun performTimeSync(): Boolean = withContext(Dispatchers.IO) {
         syncAttempts++
         val startTime = System.currentTimeMillis()
 
         try {
-            Log.d(TAG, "=== TENTATIVE SYNCHRONISATION #$syncAttempts ===")
+            Log.d(TAG, "=== TENTATIVE SYNCHRONISATION DOUBLE #$syncAttempts ===")
+            Log.d(TAG, "Temps de référence application: ${applicationStartTime}ms")
 
             // 1. Vérifier si des périphériques USB sont connectés
             val devices = usbCdcManager.listConnectedDevices()
@@ -132,43 +141,76 @@ class TimeSyncService(
 
             Log.d(TAG, "✅ ${devices.size} périphérique(s) USB détecté(s)")
 
-            // 2. Générer le message de synchronisation du temps
+            // 2. Générer le message de synchronisation du temps absolu
             val timeSyncFrame = try {
                 wristbandFrameManager.generateTimeSyncMessage()
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Erreur lors de la génération du message de temps: ${e.message}")
+                Log.e(TAG, "❌ Erreur lors de la génération du message de temps absolu: ${e.message}")
                 syncFailures++
                 return@withContext false
             }
 
-            Log.d(TAG, "📅 Message de synchronisation généré: ${timeSyncFrame.size} octets")
+            Log.d(TAG, "📅 Message de synchronisation temps absolu généré: ${timeSyncFrame.size} octets")
 
-            // 3. Envoyer le message via USB
-            val success = try {
+            // 3. Générer le message de référence de temps relatif (fixe, basé sur l'ouverture de l'app)
+            val timeReferenceFrame = try {
+                wristbandFrameManager.generateTimeReferenceMessage(applicationStartTime)
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Erreur lors de la génération du message de référence: ${e.message}")
+                syncFailures++
+                return@withContext false
+            }
+
+            Log.d(TAG, "⏰ Message de référence de temps relatif généré: ${timeReferenceFrame.size} octets")
+
+            // 4. Envoyer d'abord le message de temps absolu
+            val syncSuccess = try {
                 usbCdcManager.sendBytes(timeSyncFrame)
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Erreur lors de l'envoi USB: ${e.message}")
+                Log.e(TAG, "❌ Erreur lors de l'envoi du temps absolu: ${e.message}")
+                syncFailures++
+                return@withContext false
+            }
+
+            if (!syncSuccess) {
+                Log.w(TAG, "❌ Échec envoi temps absolu")
+                syncFailures++
+                return@withContext false
+            }
+
+            Log.d(TAG, "✅ Temps absolu envoyé avec succès")
+
+            // 5. Petite pause entre les deux envois pour éviter la congestion
+            delay(50)
+
+            // 6. Envoyer ensuite le message de référence de temps relatif
+            val referenceSuccess = try {
+                usbCdcManager.sendBytes(timeReferenceFrame)
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Erreur lors de l'envoi de la référence de temps: ${e.message}")
                 syncFailures++
                 return@withContext false
             }
 
             val duration = System.currentTimeMillis() - startTime
 
-            if (success) {
+            if (referenceSuccess) {
                 syncSuccesses++
                 lastSyncTime = System.currentTimeMillis()
-                Log.i(TAG, "✅ Synchronisation réussie en ${duration}ms (succès #$syncSuccesses)")
+                Log.i(TAG, "✅ Synchronisation DOUBLE réussie en ${duration}ms (succès #$syncSuccesses)")
+                Log.i(TAG, "  ✅ Temps absolu envoyé")
+                Log.i(TAG, "  ✅ Référence temps relatif envoyée (ref: ${applicationStartTime}ms)")
                 return@withContext true
             } else {
                 syncFailures++
-                Log.w(TAG, "❌ Échec de synchronisation en ${duration}ms (échec #$syncFailures)")
+                Log.w(TAG, "❌ Échec envoi référence temps en ${duration}ms (échec #$syncFailures)")
                 return@withContext false
             }
 
         } catch (e: Exception) {
             syncFailures++
             val duration = System.currentTimeMillis() - startTime
-            Log.e(TAG, "❌ Exception lors de la synchronisation en ${duration}ms: ${e.message}", e)
+            Log.e(TAG, "❌ Exception lors de la synchronisation double en ${duration}ms: ${e.message}", e)
             return@withContext false
         }
     }

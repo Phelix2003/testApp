@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.apptest2.ui.components.ValidatedIntField
+import com.example.apptest2.ui.components.ValidatedNumericField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,46 +155,41 @@ fun TimingConfigSection(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            OutlinedTextField(
-                value = rStartEventMs.toString(),
-                onValueChange = { value ->
-                    value.toLongOrNull()?.let { startMs ->
-                        if (startMs >= 0 && startMs < rStopEventMs) {
-                            onTimingChange(startMs, rStopEventMs, mask)
-                        }
+            ValidatedNumericField(
+                value = rStartEventMs,
+                onValueChange = { startMs ->
+                    if (startMs >= 0 && startMs < rStopEventMs) {
+                        onTimingChange(startMs, rStopEventMs, mask)
                     }
                 },
-                label = { Text("Début (ms)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                label = "Début (ms)",
+                range = 0L..Long.MAX_VALUE,
+                modifier = Modifier.fillMaxWidth(),
+                showStepButtons = false
             )
 
-            OutlinedTextField(
-                value = rStopEventMs.toString(),
-                onValueChange = { value ->
-                    value.toLongOrNull()?.let { stopMs ->
-                        if (stopMs > rStartEventMs) {
-                            onTimingChange(rStartEventMs, stopMs, mask)
-                        }
+            ValidatedNumericField(
+                value = rStopEventMs,
+                onValueChange = { stopMs ->
+                    if (stopMs > rStartEventMs) {
+                        onTimingChange(rStartEventMs, stopMs, mask)
                     }
                 },
-                label = { Text("Fin (ms)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                label = "Fin (ms)",
+                range = 0L..Long.MAX_VALUE,
+                modifier = Modifier.fillMaxWidth(),
+                showStepButtons = false
             )
 
-            OutlinedTextField(
-                value = mask.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { maskValue ->
-                        if (maskValue in 0..255) {
-                            onTimingChange(rStartEventMs, rStopEventMs, maskValue)
-                        }
-                    }
+            ValidatedIntField(
+                value = mask,
+                onValueChange = { maskValue ->
+                    onTimingChange(rStartEventMs, rStopEventMs, maskValue)
                 },
-                label = { Text("Masque (0-255)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                label = "Masque (0-255)",
+                range = 0..255,
+                modifier = Modifier.fillMaxWidth(),
+                showStepButtons = true
             )
         }
     }
@@ -217,49 +214,40 @@ fun LocalizationConfigSection(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            OutlinedTextField(
-                value = localizationConfig.mapId.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { mapId ->
-                        if (mapId in 0..255) {
-                            onConfigChange(localizationConfig.copy(mapId = mapId))
-                        }
-                    }
+            ValidatedIntField(
+                value = localizationConfig.mapId,
+                onValueChange = { mapId ->
+                    onConfigChange(localizationConfig.copy(mapId = mapId))
                 },
-                label = { Text("Map ID (0-255)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                label = "Map ID (0-255)",
+                range = 0..255,
+                modifier = Modifier.fillMaxWidth(),
+                showStepButtons = true
             )
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = localizationConfig.focus.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { focus ->
-                            if (focus in 0..255) {
-                                onConfigChange(localizationConfig.copy(focus = focus))
-                            }
-                        }
+                ValidatedIntField(
+                    value = localizationConfig.focus,
+                    onValueChange = { focus ->
+                        onConfigChange(localizationConfig.copy(focus = focus))
                     },
-                    label = { Text("Focus (×10cm)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Focus (×10cm)",
+                    range = 0..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
 
-                OutlinedTextField(
-                    value = localizationConfig.zoom.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { zoom ->
-                            if (zoom in 0..255) {
-                                onConfigChange(localizationConfig.copy(zoom = zoom))
-                            }
-                        }
+                ValidatedIntField(
+                    value = localizationConfig.zoom,
+                    onValueChange = { zoom ->
+                        onConfigChange(localizationConfig.copy(zoom = zoom))
                     },
-                    label = { Text("Zoom (×10cm)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Zoom (×10cm)",
+                    range = 0..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
             }
 
@@ -360,47 +348,38 @@ fun DetailedEffectConfigSection(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = effectConfig.frequency.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { frequency ->
-                            if (frequency in 1..255) {
-                                onConfigChange(effectConfig.copy(frequency = frequency))
-                            }
-                        }
+                ValidatedIntField(
+                    value = effectConfig.frequency,
+                    onValueChange = { frequency ->
+                        onConfigChange(effectConfig.copy(frequency = frequency))
                     },
-                    label = { Text("Fréq. (Hz)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Fréq. (Hz)",
+                    range = 1..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
 
-                OutlinedTextField(
-                    value = effectConfig.duration.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { duration ->
-                            if (duration in 0..255) {
-                                onConfigChange(effectConfig.copy(duration = duration))
-                            }
-                        }
+                ValidatedIntField(
+                    value = effectConfig.duration,
+                    onValueChange = { duration ->
+                        onConfigChange(effectConfig.copy(duration = duration))
                     },
-                    label = { Text("Durée (ms)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Durée (ms)",
+                    range = 0..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
             }
 
-            OutlinedTextField(
-                value = effectConfig.intensity.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { intensity ->
-                        if (intensity in 0..255) {
-                            onConfigChange(effectConfig.copy(intensity = intensity))
-                        }
-                    }
+            ValidatedIntField(
+                value = effectConfig.intensity,
+                onValueChange = { intensity ->
+                    onConfigChange(effectConfig.copy(intensity = intensity))
                 },
-                label = { Text("Intensité (0-255)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth()
+                label = "Intensité (0-255)",
+                range = 0..255,
+                modifier = Modifier.fillMaxWidth(),
+                showStepButtons = true
             )
 
             EventColorPicker(
@@ -476,46 +455,37 @@ fun EventColorPicker(
         Row(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            OutlinedTextField(
-                value = color.red.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { red ->
-                        if (red in 0..255) {
-                            onColorChange(color.copy(red = red))
-                        }
-                    }
+            ValidatedIntField(
+                value = color.red,
+                onValueChange = { red ->
+                    onColorChange(color.copy(red = red))
                 },
-                label = { Text("R") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+                label = "R",
+                range = 0..255,
+                modifier = Modifier.weight(1f),
+                showStepButtons = true
             )
 
-            OutlinedTextField(
-                value = color.green.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { green ->
-                        if (green in 0..255) {
-                            onColorChange(color.copy(green = green))
-                        }
-                    }
+            ValidatedIntField(
+                value = color.green,
+                onValueChange = { green ->
+                    onColorChange(color.copy(green = green))
                 },
-                label = { Text("G") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+                label = "G",
+                range = 0..255,
+                modifier = Modifier.weight(1f),
+                showStepButtons = true
             )
 
-            OutlinedTextField(
-                value = color.blue.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { blue ->
-                        if (blue in 0..255) {
-                            onColorChange(color.copy(blue = blue))
-                        }
-                    }
+            ValidatedIntField(
+                value = color.blue,
+                onValueChange = { blue ->
+                    onColorChange(color.copy(blue = blue))
                 },
-                label = { Text("B") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+                label = "B",
+                range = 0..255,
+                modifier = Modifier.weight(1f),
+                showStepButtons = true
             )
         }
 
@@ -523,32 +493,26 @@ fun EventColorPicker(
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
-                value = color.white.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { white ->
-                        if (white in 0..255) {
-                            onColorChange(color.copy(white = white))
-                        }
-                    }
+            ValidatedIntField(
+                value = color.white,
+                onValueChange = { white ->
+                    onColorChange(color.copy(white = white))
                 },
-                label = { Text("Blanc") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+                label = "Blanc",
+                range = 0..255,
+                modifier = Modifier.weight(1f),
+                showStepButtons = true
             )
 
-            OutlinedTextField(
-                value = color.vibration.toString(),
-                onValueChange = { value ->
-                    value.toIntOrNull()?.let { vibration ->
-                        if (vibration in 0..255) {
-                            onColorChange(color.copy(vibration = vibration))
-                        }
-                    }
+            ValidatedIntField(
+                value = color.vibration,
+                onValueChange = { vibration ->
+                    onColorChange(color.copy(vibration = vibration))
                 },
-                label = { Text("Vibration") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
+                label = "Vibration",
+                range = 0..255,
+                modifier = Modifier.weight(1f),
+                showStepButtons = true
             )
         }
 
@@ -601,32 +565,26 @@ fun LayerConfigSection(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = layerConfig.nbr.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { nbr ->
-                            if (nbr in 0..255) {
-                                onConfigChange(layerConfig.copy(nbr = nbr))
-                            }
-                        }
+                ValidatedIntField(
+                    value = layerConfig.nbr,
+                    onValueChange = { nbr ->
+                        onConfigChange(layerConfig.copy(nbr = nbr))
                     },
-                    label = { Text("Numéro") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Numéro",
+                    range = 0..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
 
-                OutlinedTextField(
-                    value = layerConfig.opacity.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { opacity ->
-                            if (opacity in 0..255) {
-                                onConfigChange(layerConfig.copy(opacity = opacity))
-                            }
-                        }
+                ValidatedIntField(
+                    value = layerConfig.opacity,
+                    onValueChange = { opacity ->
+                        onConfigChange(layerConfig.copy(opacity = opacity))
                     },
-                    label = { Text("Opacité (0-255)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f)
+                    label = "Opacité (0-255)",
+                    range = 0..255,
+                    modifier = Modifier.weight(1f),
+                    showStepButtons = true
                 )
             }
 

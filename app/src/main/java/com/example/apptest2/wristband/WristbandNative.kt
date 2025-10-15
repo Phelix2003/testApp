@@ -60,6 +60,9 @@ class WristbandNative {
 
     // Fonction native pour la synchronisation automatique du temps
     external fun createTimeSyncMessage(): ByteArray
+
+    // Fonction native pour envoyer la référence de temps relatif (temps d'ouverture de l'app)
+    external fun createTimeReferenceMessage(referenceTimeMs: Long): ByteArray
 }
 
 // Gestionnaire des trames wristband
@@ -260,6 +263,141 @@ class WristbandFrameManager {
 
         } catch (e: Exception) {
             android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération du message de synchronisation: ${e.message}", e)
+            throw e
+        }
+    }
+
+    // Nouvelle méthode pour envoyer la référence de temps relatif
+    fun generateTimeReferenceMessage(referenceTimeMs: Long): ByteArray {
+        try {
+            android.util.Log.d("WristbandFrameManager", "Envoi de la référence de temps relatif: ${referenceTimeMs}ms")
+
+            val result = wristbandNative.createTimeReferenceMessage(referenceTimeMs)
+
+            if (result == null) {
+                android.util.Log.e("WristbandFrameManager", "createTimeReferenceMessage a retourné null")
+                throw RuntimeException("Impossible d'envoyer la référence de temps")
+            }
+
+            android.util.Log.d("WristbandFrameManager", "Référence de temps envoyée avec succès: ${result.size} octets")
+            android.util.Log.d("WristbandFrameManager", "Trame référence temps: ${frameToHexString(result)}")
+
+            return result
+
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur lors de l'envoi de la référence de temps: ${e.message}", e)
+            throw e
+        }
+    }
+
+    // Nouvelle méthode pour générer un événement avec temps relatifs calculés automatiquement
+    fun generateDetailedEventWithRelativeTime(
+        detailedEventConfig: com.example.apptest2.ui.DetailedEventConfig,
+        applicationStartTimeMs: Long
+    ): ByteArray {
+        try {
+            // Calculer le temps actuel relatif à l'ouverture de l'application
+            val currentTimeMs = System.currentTimeMillis()
+            val relativeCurrentTimeMs = currentTimeMs - applicationStartTimeMs
+
+            // Calculer les temps relatifs pour l'événement
+            val relativeStartEventMs = relativeCurrentTimeMs + detailedEventConfig.rStartEventMs
+            val relativeStopEventMs = relativeCurrentTimeMs + detailedEventConfig.rStopEventMs
+
+            android.util.Log.d("WristbandFrameManager", "=== CALCUL TEMPS RELATIFS ===")
+            android.util.Log.d("WristbandFrameManager", "Temps référence application: ${applicationStartTimeMs}ms")
+            android.util.Log.d("WristbandFrameManager", "Temps actuel: ${currentTimeMs}ms")
+            android.util.Log.d("WristbandFrameManager", "Temps relatif actuel: ${relativeCurrentTimeMs}ms")
+            android.util.Log.d("WristbandFrameManager", "Temps origine config: start=${detailedEventConfig.rStartEventMs}ms, stop=${detailedEventConfig.rStopEventMs}ms")
+            android.util.Log.d("WristbandFrameManager", "Temps relatifs calculés: start=${relativeStartEventMs}ms, stop=${relativeStopEventMs}ms")
+
+            // Créer une nouvelle configuration avec les temps relatifs calculés
+            val relativeConfig = detailedEventConfig.copy(
+                rStartEventMs = relativeStartEventMs,
+                rStopEventMs = relativeStopEventMs
+            )
+
+            android.util.Log.d("WristbandFrameManager", "Génération Event détaillé avec temps relatifs")
+            android.util.Log.d("WristbandFrameManager", "Config avec temps relatifs:")
+            android.util.Log.d("WristbandFrameManager", "  Timing relatif: ${relativeConfig.rStartEventMs}-${relativeConfig.rStopEventMs}ms, mask=${relativeConfig.mask}")
+            android.util.Log.d("WristbandFrameManager", "  Style: ${relativeConfig.effect.style} (${relativeConfig.effect.style.value})")
+            android.util.Log.d("WristbandFrameManager", "  Fréquence: ${relativeConfig.effect.frequency}Hz, Durée: ${relativeConfig.effect.duration}ms")
+            android.util.Log.d("WristbandFrameManager", "  Intensité: ${relativeConfig.effect.intensity}/255")
+            android.util.Log.d("WristbandFrameManager", "  Couleur RGBWV: (${relativeConfig.effect.color.red},${relativeConfig.effect.color.green},${relativeConfig.effect.color.blue},${relativeConfig.effect.color.white},${relativeConfig.effect.color.vibration})")
+
+            // Essayer d'abord d'utiliser createDetailedEventMessage avec TOUS les paramètres
+            try {
+                android.util.Log.d("WristbandFrameManager", "🚀 Tentative d'utilisation de createDetailedEventMessage avec temps relatifs")
+
+                val result = wristbandNative.createDetailedEventMessage(
+                    // Timing - AVEC TEMPS RELATIFS
+                    relativeConfig.rStartEventMs,
+                    relativeConfig.rStopEventMs,
+                    relativeConfig.mask,
+                    // Effect
+                    relativeConfig.effect.style.value,
+                    relativeConfig.effect.frequency,
+                    relativeConfig.effect.duration,
+                    relativeConfig.effect.intensity,
+                    relativeConfig.effect.color.red,
+                    relativeConfig.effect.color.green,
+                    relativeConfig.effect.color.blue,
+                    relativeConfig.effect.color.white,
+                    relativeConfig.effect.color.vibration,
+                    // Localization
+                    relativeConfig.localization.mapId,
+                    relativeConfig.localization.focus,
+                    relativeConfig.localization.zoom,
+                    relativeConfig.localization.goboType.value,
+                    // Layer
+                    relativeConfig.layer.nbr,
+                    relativeConfig.layer.opacity,
+                    relativeConfig.layer.blendingMode.value
+                )
+
+                if (result == null) {
+                    android.util.Log.e("WristbandFrameManager", "createDetailedEventMessage a retourné null")
+                    throw RuntimeException("Impossible de générer la trame Event détaillée avec temps relatifs")
+                }
+
+                android.util.Log.d("WristbandFrameManager", "✅ Event détaillé avec temps relatifs généré avec succès: ${result.size} octets")
+                android.util.Log.d("WristbandFrameManager", "✅ TEMPS RELATIFS transmis:")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Timing relatif: ${relativeConfig.rStartEventMs}-${relativeConfig.rStopEventMs}ms (calculé depuis référence app)")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Effet: style=${relativeConfig.effect.style.value}, freq=${relativeConfig.effect.frequency}Hz, dur=${relativeConfig.effect.duration}ms, int=${relativeConfig.effect.intensity}")
+                android.util.Log.d("WristbandFrameManager", "  ✅ Couleur complète: RGBWV(${relativeConfig.effect.color.red},${relativeConfig.effect.color.green},${relativeConfig.effect.color.blue},${relativeConfig.effect.color.white},${relativeConfig.effect.color.vibration})")
+                android.util.Log.d("WristbandFrameManager", "Trame avec temps relatifs: ${frameToHexString(result)}")
+
+                return result
+
+            } catch (e: UnsatisfiedLinkError) {
+                // La fonction createDetailedEventMessage n'est pas encore implémentée côté C++
+                android.util.Log.w("WristbandFrameManager", "⚠️ createDetailedEventMessage pas encore implémentée côté C++")
+                android.util.Log.w("WristbandFrameManager", "🔄 Fallback vers createEventMessage avec paramètres de base (temps relatifs ignorés)")
+
+                // Fallback : utiliser la fonction simple avec les paramètres de base
+                val styleInt = relativeConfig.effect.style.value
+                val red = relativeConfig.effect.color.red
+                val green = relativeConfig.effect.color.green
+                val blue = relativeConfig.effect.color.blue
+
+                android.util.Log.d("WristbandFrameManager", "Paramètres de base transmis: style=$styleInt, RGB($red,$green,$blue)")
+                android.util.Log.w("WristbandFrameManager", "⚠️ Temps relatifs ${relativeConfig.rStartEventMs}-${relativeConfig.rStopEventMs}ms non transmis (fonction C++ manquante)")
+
+                val result = wristbandNative.createEventMessage(styleInt, red, green, blue)
+
+                if (result == null) {
+                    android.util.Log.e("WristbandFrameManager", "createEventMessage a retourné null")
+                    throw RuntimeException("Impossible de générer la trame Event")
+                }
+
+                android.util.Log.d("WristbandFrameManager", "Event généré avec succès (mode fallback): ${result.size} octets")
+                android.util.Log.d("WristbandFrameManager", "Trame: ${frameToHexString(result)}")
+
+                return result
+            }
+
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération Event avec temps relatifs: ${e.message}", e)
             throw e
         }
     }

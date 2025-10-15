@@ -464,4 +464,58 @@ Java_com_example_apptest2_wristband_WristbandNative_createTimeSyncMessage(
     }
 }
 
+// Nouvelle fonction pour envoyer la référence de temps relatif
+JNIEXPORT jbyteArray JNICALL
+Java_com_example_apptest2_wristband_WristbandNative_createTimeReferenceMessage(
+        JNIEnv *env,
+        jobject /* this */,
+        jlong referenceTimeMs) {
+
+    try {
+        LOGI("=== CRÉATION MESSAGE RÉFÉRENCE TEMPS RELATIF ===");
+
+        // Convertir le temps de référence en microsecondes
+        auto referenceTimeMicros = referenceTimeMs * 1000; // Conversion ms -> µs
+
+        LOGI("Temps de référence: %lld ms (%lld µs)", referenceTimeMs, referenceTimeMicros);
+
+        // Créer un objet Relative_time_reference_us avec le temps de référence
+        Relative_time_reference_us r_time_ref(referenceTimeMicros);
+
+        // Encoder le message de référence de temps
+        std::vector<uint8_t> payload = r_time_ref.encode();
+
+        LOGI("Message référence temps créé, taille payload: %zu octets", payload.size());
+
+        // Log des premiers octets pour debug
+        if (payload.size() > 0) {
+            std::string hexStr;
+            for (size_t i = 0; i < std::min(payload.size(), size_t(16)); i++) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "0x%02x ", payload[i]);
+                hexStr += buf;
+            }
+            LOGI("Payload référence temps: %s%s", hexStr.c_str(), payload.size() > 16 ? "..." : "");
+        }
+
+        // Encapsuler le message avec le protocole
+        std::vector<uint8_t> frame = encapsulateMessage(payload);
+
+        LOGI("Message référence temps encapsulé, taille totale: %zu octets", frame.size());
+        LOGI("=== FIN CRÉATION MESSAGE RÉFÉRENCE TEMPS RELATIF ===");
+
+        // Convertir en jbyteArray
+        jbyteArray result = env->NewByteArray(frame.size());
+        env->SetByteArrayRegion(result, 0, frame.size(), reinterpret_cast<const jbyte*>(frame.data()));
+
+        return result;
+    } catch (const std::exception& e) {
+        LOGE("Exception dans createTimeReferenceMessage: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        LOGE("Exception inconnue dans createTimeReferenceMessage");
+        return nullptr;
+    }
+}
+
 } // extern "C"

@@ -48,6 +48,7 @@ import com.example.apptest2.ui.MessageConfigScreen
 import com.example.apptest2.usb.UsbCdcManager
 import com.example.apptest2.wristband.WristbandFrameManager
 import com.example.apptest2.sync.TimeSyncService
+import com.example.apptest2.storage.ConfigurationStorage
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -74,9 +75,9 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     var showConfigScreen by remember { mutableStateOf(false) }
     var selectedButtonForConfig by remember { mutableStateOf(1) }
 
-    // États pour le service de synchronisation automatique
-    var timeSyncActive by remember { mutableStateOf(false) }
-    var syncStats by remember { mutableStateOf("Sync: Inactif") }
+    // États pour le service de synchronisation automatique - ACTIVÉ PAR DÉFAUT
+    var timeSyncActive by remember { mutableStateOf(true) }
+    var syncStats by remember { mutableStateOf("Sync: Démarrage...") }
 
     // État pour stocker les configurations des messages
     var messageConfigs by remember { mutableStateOf(DefaultMessageConfigs.configs.toMutableMap()) }
@@ -92,6 +93,29 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         TimeSyncService(context, usbCdcManager, wristbandFrameManager)
     }
 
+    // Gestionnaire de sauvegarde/chargement des configurations
+    val configurationStorage = remember { ConfigurationStorage(context) }
+
+    // Charger les configurations sauvegardées au démarrage
+    LaunchedEffect(Unit) {
+        try {
+            val loadedConfigs = configurationStorage.loadConfigurations()
+            messageConfigs = loadedConfigs
+
+            val hasStoredConfigs = configurationStorage.hasStoredConfigurations()
+            if (hasStoredConfigs) {
+                status = "📂 Configurations des boutons chargées depuis la sauvegarde"
+                android.util.Log.i("MainActivity", "✅ ${loadedConfigs.size} configurations chargées depuis la sauvegarde")
+            } else {
+                status = "📋 Configurations par défaut chargées"
+                android.util.Log.i("MainActivity", "📋 Utilisation des configurations par défaut")
+            }
+        } catch (e: Exception) {
+            status = "⚠️ Erreur lors du chargement des configurations"
+            android.util.Log.e("MainActivity", "Erreur lors du chargement des configurations", e)
+        }
+    }
+
     // Initialiser le gestionnaire wristband au démarrage
     LaunchedEffect(Unit) {
         try {
@@ -104,6 +128,18 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
         } catch (e: Exception) {
             status = "❌ Erreur fatale: ${e.message}"
             wristbandInitialized = false
+        }
+    }
+
+    // Démarrer automatiquement la synchronisation au lancement de l'application
+    LaunchedEffect(Unit) {
+        try {
+            timeSyncService.start()
+            status = "🕐 Synchronisation automatique du temps démarrée (3005ms)"
+        } catch (e: Exception) {
+            status = "❌ Erreur démarrage synchronisation: ${e.message}"
+            timeSyncActive = false
+            android.util.Log.e("MainActivity", "Erreur démarrage synchronisation automatique", e)
         }
     }
 
@@ -172,8 +208,11 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
                         return@launch
                     }
 
-                    // Toujours utiliser la configuration détaillée
-                    val frame = wristbandFrameManager.generateDetailedEvent(config.detailedEventConfig)
+                    // Toujours utiliser la configuration détaillée AVEC TEMPS RELATIFS
+                    val frame = wristbandFrameManager.generateDetailedEventWithRelativeTime(
+                        config.detailedEventConfig,
+                        timeSyncService.getApplicationStartTime()
+                    )
                     val isValid = wristbandFrameManager.validateFrame(frame)
 
                     if (!isValid) {
@@ -244,6 +283,16 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
             onConfigChange = { newConfig ->
                 messageConfigs = messageConfigs.toMutableMap().apply {
                     put(selectedButtonForConfig, newConfig)
+                }
+
+                // Sauvegarder automatiquement les configurations modifiées
+                coroutineScope.launch {
+                    try {
+                        configurationStorage.saveConfigurations(messageConfigs)
+                        android.util.Log.d("MainActivity", "💾 Configuration du bouton $selectedButtonForConfig sauvegardée automatiquement")
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "❌ Erreur lors de la sauvegarde automatique: ${e.message}", e)
+                    }
                 }
             },
             onBack = { showConfigScreen = false }
