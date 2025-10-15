@@ -47,6 +47,7 @@ import com.example.apptest2.ui.MessageConfig
 import com.example.apptest2.ui.MessageConfigScreen
 import com.example.apptest2.usb.UsbCdcManager
 import com.example.apptest2.wristband.WristbandFrameManager
+import com.example.apptest2.sync.TimeSyncService
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -73,6 +74,10 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     var showConfigScreen by remember { mutableStateOf(false) }
     var selectedButtonForConfig by remember { mutableStateOf(1) }
 
+    // États pour le service de synchronisation automatique
+    var timeSyncActive by remember { mutableStateOf(false) }
+    var syncStats by remember { mutableStateOf("Sync: Inactif") }
+
     // État pour stocker les configurations des messages
     var messageConfigs by remember { mutableStateOf(DefaultMessageConfigs.configs.toMutableMap()) }
 
@@ -81,6 +86,11 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     val usbCdcManager = remember { UsbCdcManager(context) }
     val wristbandFrameManager = remember { WristbandFrameManager() }
     val listState = rememberLazyListState()
+
+    // Service de synchronisation automatique du temps
+    val timeSyncService = remember {
+        TimeSyncService(context, usbCdcManager, wristbandFrameManager)
+    }
 
     // Initialiser le gestionnaire wristband au démarrage
     LaunchedEffect(Unit) {
@@ -101,6 +111,47 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
+        }
+    }
+
+    // Mise à jour périodique des statistiques de synchronisation
+    LaunchedEffect(timeSyncActive) {
+        while (timeSyncActive) {
+            kotlinx.coroutines.delay(1000) // Mise à jour chaque seconde
+            val stats = timeSyncService.getStats()
+            syncStats = "Sync: ${stats.attempts} tentatives, ${stats.successes} succès (${stats.successRate}%)"
+        }
+    }
+
+    // Nettoyage du service lors de la destruction de l'interface
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            timeSyncService.cleanup()
+        }
+    }
+
+    // Fonction pour gérer le service de synchronisation
+    val handleTimeSyncToggle = {
+        if (!isLoading) {
+            coroutineScope.launch {
+                isLoading = true
+                try {
+                    if (timeSyncActive) {
+                        timeSyncService.stop()
+                        timeSyncActive = false
+                        syncStats = "Sync: Arrêté"
+                        status = "🔴 Synchronisation automatique du temps arrêtée"
+                    } else {
+                        timeSyncService.start()
+                        timeSyncActive = true
+                        status = "🕐 Synchronisation automatique du temps démarrée (3005ms)"
+                    }
+                } catch (e: Exception) {
+                    status = "❌ Erreur service synchronisation: ${e.message}"
+                    android.util.Log.e("MainActivity", "Erreur service synchronisation", e)
+                }
+                isLoading = false
+            }
         }
     }
 
@@ -265,6 +316,50 @@ fun UsbTestScreen(modifier: Modifier = Modifier) {
                     )
                 ) {
                     Text("🗑️ EFFACER")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Bouton de contrôle de la synchronisation automatique du temps
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { handleTimeSyncToggle() },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(2f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = if (timeSyncActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        }
+                    )
+                ) {
+                    Text(
+                        if (timeSyncActive) {
+                            "🕐 SYNC ON (3005ms)"
+                        } else {
+                            "⏰ SYNC OFF"
+                        }
+                    )
+                }
+
+                // Affichage des statistiques de synchronisation
+                Card(
+                    modifier = Modifier.weight(3f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Text(
+                        text = syncStats,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

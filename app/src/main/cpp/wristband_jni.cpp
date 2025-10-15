@@ -408,4 +408,60 @@ Java_com_example_apptest2_wristband_WristbandNative_createDetailedEventMessage(
     }
 }
 
+// Nouvelle fonction pour synchroniser l'heure du device avec le smartphone
+JNIEXPORT jbyteArray JNICALL
+Java_com_example_apptest2_wristband_WristbandNative_createTimeSyncMessage(
+        JNIEnv *env,
+        jobject /* this */) {
+
+    try {
+        LOGI("=== CRÉATION MESSAGE SYNCHRONISATION TEMPS ===");
+
+        // Obtenir le temps actuel en microsecondes depuis l'epoch Unix
+        auto now = std::chrono::system_clock::now();
+        auto nowAsTimeT = std::chrono::system_clock::to_time_t(now);
+        auto nowAsMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+
+        LOGI("Temps actuel: %ld secondes depuis l'Epoch", nowAsTimeT);
+        LOGI("Temps actuel: %lld microsecondes depuis l'Epoch", nowAsMicroseconds.count());
+
+        // Créer un objet Absolute_time_us avec le temps actuel
+        Absolute_time_us absolute_time_us(nowAsMicroseconds.count());
+
+        // Encoder le message de temps
+        std::vector<uint8_t> payload = absolute_time_us.encode();
+
+        LOGI("Message temps créé, taille payload: %zu octets", payload.size());
+
+        // Log des premiers octets pour debug
+        if (payload.size() > 0) {
+            std::string hexStr;
+            for (size_t i = 0; i < std::min(payload.size(), size_t(16)); i++) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "0x%02x ", payload[i]);
+                hexStr += buf;
+            }
+            LOGI("Payload temps: %s%s", hexStr.c_str(), payload.size() > 16 ? "..." : "");
+        }
+
+        // Encapsuler le message avec le protocole
+        std::vector<uint8_t> frame = encapsulateMessage(payload);
+
+        LOGI("Message temps encapsulé, taille totale: %zu octets", frame.size());
+        LOGI("=== FIN CRÉATION MESSAGE SYNCHRONISATION TEMPS ===");
+
+        // Convertir en jbyteArray
+        jbyteArray result = env->NewByteArray(frame.size());
+        env->SetByteArrayRegion(result, 0, frame.size(), reinterpret_cast<const jbyte*>(frame.data()));
+
+        return result;
+    } catch (const std::exception& e) {
+        LOGE("Exception dans createTimeSyncMessage: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        LOGE("Exception inconnue dans createTimeSyncMessage");
+        return nullptr;
+    }
+}
+
 } // extern "C"

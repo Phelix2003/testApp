@@ -57,6 +57,9 @@ class WristbandNative {
         layerOpacity: Int,
         blendingModeValue: Int
     ): ByteArray
+
+    // Fonction native pour la synchronisation automatique du temps
+    external fun createTimeSyncMessage(): ByteArray
 }
 
 // Gestionnaire des trames wristband
@@ -234,6 +237,29 @@ class WristbandFrameManager {
 
         } catch (e: Exception) {
             android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération Event détaillé: ${e.message}", e)
+            throw e
+        }
+    }
+
+    // Nouvelle méthode pour générer un message de synchronisation du temps
+    fun generateTimeSyncMessage(): ByteArray {
+        try {
+            android.util.Log.d("WristbandFrameManager", "Génération message de synchronisation du temps")
+
+            val result = wristbandNative.createTimeSyncMessage()
+
+            if (result == null) {
+                android.util.Log.e("WristbandFrameManager", "createTimeSyncMessage a retourné null")
+                throw RuntimeException("Impossible de générer le message de synchronisation du temps")
+            }
+
+            android.util.Log.d("WristbandFrameManager", "Message de synchronisation du temps généré avec succès: ${result.size} octets")
+            android.util.Log.d("WristbandFrameManager", "Trame temps: ${frameToHexString(result)}")
+
+            return result
+
+        } catch (e: Exception) {
+            android.util.Log.e("WristbandFrameManager", "Erreur lors de la génération du message de synchronisation: ${e.message}", e)
             throw e
         }
     }
